@@ -1,20 +1,28 @@
 import { randomUUID } from 'node:crypto'
 
+const MAX_TITLE_LENGTH = 120
+
 export function createStore() {
   return {
     tasks: [],
   }
 }
 
-export function createTask(store, { title }) {
+function normalizeTaskTitle(title) {
   const taskTitle = String(title || '').trim()
   if (!taskTitle) {
     throw new Error('title e obrigatorio')
   }
+  if (taskTitle.length > MAX_TITLE_LENGTH) {
+    throw new Error(`title deve ter no maximo ${MAX_TITLE_LENGTH} caracteres`)
+  }
+  return taskTitle
+}
 
+export function createTask(store, { title }) {
   const task = {
     id: randomUUID(),
-    title: taskTitle,
+    title: normalizeTaskTitle(title),
     done: false,
     createdAt: new Date().toISOString(),
   }
@@ -23,12 +31,26 @@ export function createTask(store, { title }) {
   return task
 }
 
-export function toggleTask(store, taskId) {
+export function getTaskById(store, taskId) {
   const task = store.tasks.find((item) => item.id === taskId)
   if (!task) {
     throw new Error('task nao encontrada')
   }
+  return task
+}
 
+export function listTasks(store, filters = {}) {
+  const doneFilter = filters.done
+  return store.tasks.filter((task) => {
+    if (doneFilter === undefined) {
+      return true
+    }
+    return task.done === doneFilter
+  })
+}
+
+export function toggleTask(store, taskId) {
+  const task = getTaskById(store, taskId)
   task.done = !task.done
   return task
 }
@@ -81,6 +103,20 @@ function readJsonBody(req) {
   })
 }
 
+function parseDoneFilter(searchParams) {
+  const done = searchParams.get('done')
+  if (done === null) {
+    return undefined
+  }
+  if (done === 'true') {
+    return true
+  }
+  if (done === 'false') {
+    return false
+  }
+  throw new Error('filtro done invalido')
+}
+
 export function createApp(store = createStore()) {
   return async function app(req, res) {
     const url = new URL(req.url || '/', 'http://localhost')
@@ -98,7 +134,8 @@ export function createApp(store = createStore()) {
       }
 
       if (req.method === 'GET' && url.pathname === '/api/tasks') {
-        sendJson(res, 200, { tasks: store.tasks })
+        const done = parseDoneFilter(url.searchParams)
+        sendJson(res, 200, { tasks: listTasks(store, { done }) })
         return
       }
 
@@ -109,6 +146,13 @@ export function createApp(store = createStore()) {
         return
       }
 
+      const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/)
+      if (req.method === 'GET' && taskMatch) {
+        const task = getTaskById(store, taskMatch[1])
+        sendJson(res, 200, { task })
+        return
+      }
+
       const toggleMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/toggle$/)
       if (req.method === 'PATCH' && toggleMatch) {
         const task = toggleTask(store, toggleMatch[1])
@@ -116,9 +160,8 @@ export function createApp(store = createStore()) {
         return
       }
 
-      const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/)
-      if (req.method === 'DELETE' && deleteMatch) {
-        const task = removeTask(store, deleteMatch[1])
+      if (req.method === 'DELETE' && taskMatch) {
+        const task = removeTask(store, taskMatch[1])
         sendJson(res, 200, { task })
         return
       }
