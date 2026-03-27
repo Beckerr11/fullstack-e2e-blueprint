@@ -33,13 +33,23 @@ export function toggleTask(store, taskId) {
   return task
 }
 
+export function removeTask(store, taskId) {
+  const index = store.tasks.findIndex((item) => item.id === taskId)
+  if (index < 0) {
+    throw new Error('task nao encontrada')
+  }
+
+  const [removed] = store.tasks.splice(index, 1)
+  return removed
+}
+
 export function buildIndexHtml() {
   return [
     '<!doctype html>',
     '<html lang="pt-BR">',
     '<head><meta charset="utf-8"><title>Fullstack E2E Blueprint</title></head>',
     '<body>',
-    '<h1>Fullstack E2E Blueprint</h1>',
+    '<h1 data-testid="title">Fullstack E2E Blueprint</h1>',
     '<p>Use os endpoints /api/tasks e /health para o fluxo de testes.</p>',
     '</body>',
     '</html>',
@@ -102,6 +112,13 @@ export function createApp(store = createStore()) {
       const toggleMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)\/toggle$/)
       if (req.method === 'PATCH' && toggleMatch) {
         const task = toggleTask(store, toggleMatch[1])
+        sendJson(res, 200, { task })
+        return
+      }
+
+      const deleteMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/)
+      if (req.method === 'DELETE' && deleteMatch) {
+        const task = removeTask(store, deleteMatch[1])
         sendJson(res, 200, { task })
         return
       }
